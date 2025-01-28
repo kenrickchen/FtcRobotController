@@ -33,6 +33,7 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
@@ -62,6 +63,7 @@ public class MainTeleop extends LinearOpMode {
 
     DcMotor leftSlide = null;
     DcMotor rightSlide = null;
+    boolean climbSlide = false;
 
     @Override
     public void runOpMode() {
@@ -74,11 +76,95 @@ public class MainTeleop extends LinearOpMode {
         leftSlide = hardwareMap.get(DcMotor.class, "left_slide");
         rightSlide = hardwareMap.get(DcMotor.class, "right_slide");
 
-        Drive drive = new Drive(leftFrontDrive, leftBackDrive, rightFrontDrive, rightBackDrive);
-        drive.runOpMode();
-        Slides slides = new Slides(leftSlide, rightSlide);
+        leftSlide.setDirection(DcMotor.Direction.FORWARD);
+        rightSlide.setDirection(DcMotor.Direction.FORWARD);
+
+        leftFrontDrive.setDirection(DcMotor.Direction.FORWARD);
+        leftBackDrive.setDirection(DcMotor.Direction.REVERSE);
+        rightFrontDrive.setDirection(DcMotor.Direction.REVERSE);
+        rightBackDrive.setDirection(DcMotor.Direction.FORWARD);
+
+        leftSlide.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        rightSlide.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        leftSlide.setDirection(DcMotorSimple.Direction.REVERSE);
+        rightSlide.setDirection(DcMotorSimple.Direction.FORWARD);
 
         waitForStart();
         runtime.reset();
+
+        while (opModeIsActive()) {
+            double max;
+
+            double slidePower;
+            double leftSlideCurrentPosition;
+            double rightSlideCurrentPosition;
+
+
+            // POV Mode uses left joystick to go forward & strafe, and right joystick to rotate.
+            double axial   = -gamepad1.left_stick_y;  // Note: pushing stick forward gives negative value
+            double lateral =  gamepad1.left_stick_x;
+            double yaw     =  gamepad1.right_stick_x;
+
+            // Combine the joystick requests for each axis-motion to determine each wheel's power.
+            // Set up a variable for each drive wheel to save the power level for telemetry.
+            double leftFrontPower  = axial + lateral + yaw;
+            double rightFrontPower = axial - lateral - yaw;
+            double leftBackPower   = axial - lateral + yaw;
+            double rightBackPower  = axial + lateral - yaw;
+
+            // Normalize the values so no wheel power exceeds 100%
+            // This ensures that the robot maintains the desired motion.
+            max = Math.max(Math.abs(leftFrontPower), Math.abs(rightFrontPower));
+            max = Math.max(max, Math.abs(leftBackPower));
+            max = Math.max(max, Math.abs(rightBackPower));
+
+            if (max > 1.0) {
+                leftFrontPower  /= max;
+                rightFrontPower /= max;
+                leftBackPower   /= max;
+                rightBackPower  /= max;
+            }
+
+            // This is test code
+            /*
+            leftFrontPower  = gamepad1.x ? 1.0 : 0.0;  // X gamepad
+            leftBackPower   = gamepad1.a ? 1.0 : 0.0;  // A gamepad
+            rightFrontPower = gamepad1.y ? 1.0 : 0.0;  // Y gamepad
+            rightBackPower  = gamepad1.b ? 1.0 : 0.0;  // B gamepad
+            */
+
+            leftFrontDrive.setPower(leftFrontPower);
+            rightFrontDrive.setPower(rightFrontPower);
+            leftBackDrive.setPower(leftBackPower);
+            rightBackDrive.setPower(rightBackPower);
+
+            leftSlideCurrentPosition = leftSlide.getCurrentPosition();
+            rightSlideCurrentPosition = rightSlide.getCurrentPosition();
+
+            slidePower    = Range.clip(gamepad1.right_trigger - gamepad1.left_trigger, -1.0, 1.0) ;
+
+            if (leftSlideCurrentPosition < 5000) {
+                leftSlide.setPower(slidePower);
+            }
+            if (leftSlideCurrentPosition < 5000) {
+                rightSlide.setPower(slidePower);
+            }
+
+            if (gamepad1.b) {
+                climbSlide = true;
+            }
+
+            if (climbSlide) {
+                leftSlide.setPower(-1);
+                rightSlide.setPower(-1);
+            }
+
+            telemetry.addData("Status", "Run Time: " + runtime.toString());
+            telemetry.addData("Front left/Right", "%4.2f, %4.2f", leftFrontPower, rightFrontPower);
+            telemetry.addData("Back  left/Right", "%4.2f, %4.2f", leftBackPower, rightBackPower);
+            telemetry.addData("Slides", "Left: (%.2f) Right: (%.2f)", leftSlideCurrentPosition, rightSlideCurrentPosition);
+            telemetry.update();
+        }
     }
 }
