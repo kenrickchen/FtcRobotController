@@ -29,6 +29,7 @@
 
 package org.firstinspires.ftc.teamcode;
 
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
@@ -40,6 +41,8 @@ import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
+
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
 
 /*
@@ -58,24 +61,52 @@ import com.qualcomm.robotcore.util.Range;
 @TeleOp(name="Teleop", group="OpMode")
 
 public class Teleop extends OpMode {
+    final int ARM_EXTEND_POSITION = 550;
+    final int ARM_RETRACT_POSITION = 50;
+    final double INTAKE_SERVO_OUT_TIME = 1000;
 
-    private ElapsedTime runtime = new ElapsedTime();
+    public enum IntakeState {
+        ARM_START,
+        ARM_EXTEND,
+        SERVO_IN,
+        ARM_RETRACT,
+        SERVO_OUT
+    }
+    public IntakeState intakeState = IntakeState.ARM_START;
+
+    final int SLIDES_EXTEND_POSITION = 3000;
+    final int SLIDES_RETRACT_POSITION = 0;
+    final double OUTTAKE_SERVO_OUT_POSITION = 180;
+    final double OUTTAKE_SERVO_IN_POSITION = 0;
+    final double OUTTAKE_SERVO_OUT_TIME = 1000;
+    final double OUTTAKE_SERVO_IN_TIME = 1000;
+
+    public enum OuttakeState {
+        SLIDES_START,
+        SLIDES_EXTEND,
+        SERVO_OUT,
+        SERVO_IN,
+        SLIDES_RETRACT
+    }
+    public OuttakeState outtakeState = OuttakeState.SLIDES_START;
+
     private DcMotor leftFrontDrive;
     private DcMotor leftBackDrive;
     private DcMotor rightFrontDrive;
     private DcMotor rightBackDrive;
     private IMU imu;
-    public static Drive drive;
 
     private DcMotor leftArm;
     private DcMotor rightArm;
     private CRServo intakeServo;
-    public static Intake intake;
 
     private DcMotor leftSlide;
     private DcMotor rightSlide;
     private Servo outtakeServo;
-    public static Outtake outtake;
+
+    private ElapsedTime intakeTimer = new ElapsedTime();
+    private ElapsedTime outtakeTimer = new ElapsedTime();
+    private ElapsedTime runtime = new ElapsedTime();
 
     @Override
     public void init() {
@@ -84,17 +115,49 @@ public class Teleop extends OpMode {
         rightFrontDrive = hardwareMap.get(DcMotor.class, "right_front_drive");
         rightBackDrive = hardwareMap.get(DcMotor.class, "right_back_drive");
         imu = hardwareMap.get(IMU.class, "imu");
-        drive = new Drive(leftFrontDrive, leftBackDrive, rightFrontDrive, rightBackDrive, imu);
 
         leftArm = hardwareMap.get(DcMotor.class, "left_arm");
         rightArm = hardwareMap.get(DcMotor.class, "right_arm");
         intakeServo = hardwareMap.get(CRServo.class, "intake_servo");
-        intake = new Intake(leftArm, rightArm, intakeServo);
 
         leftSlide = hardwareMap.get(DcMotor.class, "left_slide");
         rightSlide = hardwareMap.get(DcMotor.class, "right_slide");
         outtakeServo = hardwareMap.get(Servo.class, "outtake_servo");
-        outtake = new Outtake(leftSlide, rightSlide, outtakeServo);
+
+        leftFrontDrive.setDirection(DcMotor.Direction.FORWARD);
+        leftBackDrive.setDirection(DcMotor.Direction.REVERSE);
+        rightFrontDrive.setDirection(DcMotor.Direction.REVERSE);
+        rightBackDrive.setDirection(DcMotor.Direction.FORWARD);
+
+        IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
+                RevHubOrientationOnRobot.LogoFacingDirection.UP,
+                RevHubOrientationOnRobot.UsbFacingDirection.BACKWARD));
+        imu.initialize(parameters);
+
+        leftArm.setDirection(DcMotorSimple.Direction.REVERSE);
+        rightArm.setDirection(DcMotorSimple.Direction.FORWARD);
+
+        leftArm.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        rightArm.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        leftArm.setTargetPosition(ARM_RETRACT_POSITION);
+        rightArm.setTargetPosition(ARM_RETRACT_POSITION);
+        leftArm.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        rightArm.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+
+        intakeServo.setDirection(CRServo.Direction.REVERSE);
+        intakeServo.setPower(0.0);
+
+        leftSlide.setDirection(DcMotorSimple.Direction.FORWARD);
+        rightSlide.setDirection(DcMotorSimple.Direction.REVERSE);
+
+        leftSlide.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        rightSlide.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        leftSlide.setTargetPosition(SLIDES_RETRACT_POSITION);
+        rightSlide.setTargetPosition(SLIDES_RETRACT_POSITION);
+        leftSlide.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        rightSlide.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+
+        outtakeServo.setPosition(OUTTAKE_SERVO_IN_POSITION);
 
         telemetry.addData("Status", "Initialized");
     }
@@ -106,9 +169,116 @@ public class Teleop extends OpMode {
 
     @Override
     public void loop() {
+        double y = -gamepad1.left_stick_y;
+        double x = gamepad1.left_stick_x;
+        double rx = gamepad1.right_stick_x;
+
+        if (gamepad1.options) {
+            imu.resetYaw();
+        }
+
+        double botHeading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+
+        double rotX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
+        double rotY = x * Math.sin(-botHeading) + y * Math.cos(-botHeading);
+
+        rotX = rotX * 1.1;
+
+        double denominator = Math.max(Math.abs(rotY) + Math.abs(rotX) + Math.abs(rx), 1);
+        double frontLeftPower = (rotY + rotX + rx) / denominator;
+        double backLeftPower = (rotY - rotX + rx) / denominator;
+        double frontRightPower = (rotY - rotX - rx) / denominator;
+        double backRightPower = (rotY + rotX - rx) / denominator;
+
+        leftFrontDrive.setPower(frontLeftPower);
+        leftBackDrive.setPower(backLeftPower);
+        rightFrontDrive.setPower(frontRightPower);
+        rightBackDrive.setPower(backRightPower);
+
+        leftArm.setPower(0.3);
+        rightArm.setPower(0.3);
+
+        switch (intakeState) {
+            case ARM_START:
+                if (outtakeState.name().equals("SLIDES_START") && gamepad1.x) {
+                    leftArm.setTargetPosition(ARM_EXTEND_POSITION);
+                    rightArm.setTargetPosition(ARM_EXTEND_POSITION);
+                    intakeState = IntakeState.ARM_EXTEND;
+                }
+                break;
+            case ARM_EXTEND:
+                if (Math.abs(leftArm.getCurrentPosition() - ARM_EXTEND_POSITION) < 10) {
+                    intakeServo.setPower(1.0);
+                    intakeState = IntakeState.SERVO_IN;
+                }
+                break;
+            case SERVO_IN:
+                if (gamepad1.x) {
+                    intakeServo.setPower(0.0);
+                    leftArm.setTargetPosition(ARM_RETRACT_POSITION);
+                    rightArm.setTargetPosition(ARM_RETRACT_POSITION);
+                    intakeState = IntakeState.ARM_RETRACT;
+                }
+                break;
+            case ARM_RETRACT:
+                if (Math.abs(leftArm.getCurrentPosition() - ARM_RETRACT_POSITION) < 10) {
+                    intakeServo.setPower(-1.0);
+                    intakeTimer.reset();
+                    intakeState = IntakeState.SERVO_OUT;
+                }
+                break;
+            case SERVO_OUT:
+                if (intakeTimer.milliseconds() >= INTAKE_SERVO_OUT_TIME) {
+                    intakeServo.setPower(0.0);
+                    intakeState = IntakeState.ARM_START;
+                }
+                break;
+            default:
+                intakeState = IntakeState.ARM_START;
+        }
+
+        leftSlide.setPower(0.5);
+        rightSlide.setPower(0.5);
+
+        switch (outtakeState) {
+            case SLIDES_START:
+                if (intakeState.name().equals("ARM_START") && gamepad1.y) {
+                    leftSlide.setTargetPosition(SLIDES_EXTEND_POSITION);
+                    rightSlide.setTargetPosition(SLIDES_EXTEND_POSITION);
+                    outtakeState = OuttakeState.SLIDES_EXTEND;
+                }
+                break;
+            case SLIDES_EXTEND:
+                if (Math.abs(leftSlide.getCurrentPosition() - SLIDES_EXTEND_POSITION) < 10 && gamepad1.y) {
+                    outtakeServo.setPosition(OUTTAKE_SERVO_OUT_POSITION);
+                    outtakeTimer.reset();
+                    outtakeState = OuttakeState.SERVO_OUT;
+                }
+                break;
+            case SERVO_OUT:
+                if (outtakeTimer.milliseconds() >= OUTTAKE_SERVO_OUT_TIME) {
+                    outtakeServo.setPosition(OUTTAKE_SERVO_IN_POSITION);
+                    outtakeTimer.reset();
+                    outtakeState = OuttakeState.SERVO_IN;
+                }
+                break;
+            case SERVO_IN:
+                if (outtakeTimer.milliseconds() >= OUTTAKE_SERVO_IN_TIME){
+                    leftSlide.setTargetPosition(SLIDES_RETRACT_POSITION);
+                    rightSlide.setTargetPosition(SLIDES_RETRACT_POSITION);
+                    outtakeState = OuttakeState.SLIDES_RETRACT;
+                }
+                break;
+            case SLIDES_RETRACT:
+                if (Math.abs(leftSlide.getCurrentPosition() - SLIDES_RETRACT_POSITION) < 10 && gamepad1.y) {
+                    outtakeState = outtakeState.SLIDES_START;
+                }
+                break;
+            default:
+                outtakeState = outtakeState.SLIDES_START;
+        }
+
         telemetry.addData("Status", "Runtime: " + runtime.toString());
-        telemetry.addData("Intake", "State: " + intake.state.name());
-        telemetry.addData("Outtake", "State: " + outtake.state.name());
         telemetry.update();
     }
 }
