@@ -271,14 +271,23 @@ public class Teleop extends OpMode {
                 break;
             case SLIDES_RETRACT:
                 if (Math.abs(leftSlide.getCurrentPosition() - SLIDES_RETRACT_POSITION) < 10 && gamepad1.y) {
-                    outtakeState = outtakeState.SLIDES_START;
+                    outtakeState = OuttakeState.SLIDES_START;
                 }
                 break;
             default:
-                outtakeState = outtakeState.SLIDES_START;
+                outtakeState = OuttakeState.SLIDES_START;
         }
 
+        int slidePosition = (leftSlide.getCurrentPosition() + rightArm.getCurrentPosition()) / 2;
+        int armPosition = (leftArm.getCurrentPosition() + rightArm.getCurrentPosition()) / 2;
+
         telemetry.addData("Status", "Runtime: " + runtime.toString());
+        telemetry.addLine();
+        telemetry.addData("Intake", "State: " + intakeState.name());
+        telemetry.addData("Arm", "Position: " + armPosition);
+        telemetry.addLine();
+        telemetry.addData("Outtake", "State: " + outtakeState.name());
+        telemetry.addData("Slides", "Position: " + slidePosition);
         telemetry.update();
     }
 }
