@@ -43,7 +43,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
-
+import static org.firstinspires.ftc.teamcode.Constants.*;
 
 /*
  * This file contains an minimal example of a Linear "OpMode". An OpMode is a 'program' that runs in either
@@ -61,10 +61,6 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 @TeleOp(name="Teleop", group="OpMode")
 
 public class Teleop extends OpMode {
-    final int ARM_EXTEND_POSITION = 550;
-    final int ARM_RETRACT_POSITION = 50;
-    final double INTAKE_SERVO_OUT_TIME = 1000;
-
     public enum IntakeState {
         ARM_START,
         ARM_EXTEND,
@@ -73,13 +69,6 @@ public class Teleop extends OpMode {
         SERVO_OUT
     }
     public IntakeState intakeState = IntakeState.ARM_START;
-
-    final int SLIDES_EXTEND_POSITION = 3000;
-    final int SLIDES_RETRACT_POSITION = 0;
-    final double OUTTAKE_SERVO_OUT_POSITION = 180;
-    final double OUTTAKE_SERVO_IN_POSITION = 0;
-    final double OUTTAKE_SERVO_OUT_TIME = 1000;
-    final double OUTTAKE_SERVO_IN_TIME = 1000;
 
     public enum OuttakeState {
         SLIDES_START,
