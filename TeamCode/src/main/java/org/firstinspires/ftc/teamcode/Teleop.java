@@ -66,7 +66,8 @@ public class Teleop extends OpMode {
         ARM_EXTEND,
         SERVO_IN,
         ARM_RETRACT,
-        SERVO_OUT
+        SERVO_OUT,
+        ARM_PULL
     }
     public IntakeState intakeState = IntakeState.ARM_START;
 
@@ -75,7 +76,8 @@ public class Teleop extends OpMode {
         SLIDES_EXTEND,
         SERVO_OUT,
         SERVO_IN,
-        SLIDES_RETRACT
+        SLIDES_RETRACT,
+        SLIDES_PULL
     }
     public OuttakeState outtakeState = OuttakeState.SLIDES_START;
 
@@ -123,7 +125,7 @@ public class Teleop extends OpMode {
                 RevHubOrientationOnRobot.UsbFacingDirection.BACKWARD));
         imu.initialize(parameters);
 
-        leftArm.setDirection(DcMotorSimple.Direction.REVERSE);
+        leftArm.setDirection(DcMotorSimple.Direction.FORWARD);
         rightArm.setDirection(DcMotorSimple.Direction.FORWARD);
 
         leftArm.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
@@ -136,8 +138,8 @@ public class Teleop extends OpMode {
         intakeServo.setDirection(CRServo.Direction.REVERSE);
         intakeServo.setPower(0.0);
 
-        leftSlide.setDirection(DcMotorSimple.Direction.FORWARD);
-        rightSlide.setDirection(DcMotorSimple.Direction.REVERSE);
+        leftSlide.setDirection(DcMotorSimple.Direction.REVERSE);
+        rightSlide.setDirection(DcMotorSimple.Direction.FORWARD);
 
         leftSlide.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         rightSlide.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
@@ -222,6 +224,9 @@ public class Teleop extends OpMode {
                     intakeState = IntakeState.ARM_START;
                 }
                 break;
+            case ARM_PULL:
+                leftArm.setTargetPosition(ARM_RETRACT_POSITION);
+                rightArm.setTargetPosition(ARM_RETRACT_POSITION);
             default:
                 intakeState = IntakeState.ARM_START;
         }
@@ -263,12 +268,26 @@ public class Teleop extends OpMode {
                     outtakeState = OuttakeState.SLIDES_START;
                 }
                 break;
+            case SLIDES_PULL:
+                leftSlide.setTargetPosition(0);
+                rightSlide.setTargetPosition(0);
+                break;
             default:
                 outtakeState = OuttakeState.SLIDES_START;
         }
 
-        int slidePosition = (leftSlide.getCurrentPosition() + rightArm.getCurrentPosition()) / 2;
         int armPosition = (leftArm.getCurrentPosition() + rightArm.getCurrentPosition()) / 2;
+
+        if (gamepad1.dpad_up) {
+            leftArm.setPower(0.8);
+            rightArm.setPower(0.8);
+            intakeState = IntakeState.ARM_PULL;
+        }
+        if (gamepad1.dpad_down) {
+            leftSlide.setPower(0.8);
+            rightSlide.setPower(0.8);
+            outtakeState = OuttakeState.SLIDES_PULL;
+        }
 
         telemetry.addData("Status", "Runtime: " + runtime.toString());
         telemetry.addLine();
@@ -276,7 +295,8 @@ public class Teleop extends OpMode {
         telemetry.addData("Arm", "Position: " + armPosition);
         telemetry.addLine();
         telemetry.addData("Outtake", "State: " + outtakeState.name());
-        telemetry.addData("Slides", "Position: " + slidePosition);
+        telemetry.addData("Left Slide", "Position: " + leftSlide.getCurrentPosition());
+        telemetry.addData("Right Slide", "Position: " + rightSlide.getCurrentPosition());
         telemetry.update();
     }
 }
